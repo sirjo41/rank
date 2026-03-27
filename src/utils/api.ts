@@ -196,15 +196,15 @@ export async function overrideMatchScore(matchId: string, updates: Partial<Match
 
 export async function updateMatchStatus(matchId: string, status: string): Promise<void> {
   if (status === 'playing') {
-    const { error } = await supabase.from('competition_settings').update({ active_match_id: matchId, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null, updated_at: new Date().toISOString() }).eq('id', 1);
-    if (error) console.error('Failed to update timer:', error);
+    const { error: err1 } = await supabase.from('competition_settings').update({ active_match_id: matchId, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null, updated_at: new Date().toISOString() }).eq('id', 1);
+    if (err1) console.error('Failed to update settings:', err1);
   }
   if (status === 'completed') {
-    const { error } = await supabase.from('competition_settings').update({ timer_running: false, updated_at: new Date().toISOString() }).eq('id', 1);
-    if (error) console.error('Failed to stop timer:', error);
+    const { error: err2 } = await supabase.from('competition_settings').update({ timer_running: false, updated_at: new Date().toISOString() }).eq('id', 1);
+    if (err2) console.error('Failed to update settings:', err2);
   }
-  const { error } = await supabase.from('matches').update({ status }).eq('id', matchId);
-  if (error) throw new Error(error.message);
+  const { error: err3 } = await supabase.from('matches').update({ status }).eq('id', matchId);
+  if (err3) throw new Error(err3.message);
 }
 
 // ─── Settings ─────────────────────────────────────────────────
@@ -272,19 +272,20 @@ export async function fetchRankings(): Promise<Ranking[]> {
   });
 }
 
-// ─── Realtime subscriptions ────────────────────────────────────
 export function subscribeToMatch(matchId: string, onUpdate: (match: Match) => void) {
   return supabase.channel(`match-${matchId}`)
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${matchId}` },
-      (payload) => onUpdate(normalizeMatch(payload.new)))
-    .subscribe();
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' },
+      (payload: any) => {
+        if (payload.new.id === matchId) onUpdate(normalizeMatch(payload.new));
+      })
+    .subscribe((status: string) => console.log('subscribeToMatch status:', status));
 }
 
 export function subscribeToSettings(onUpdate: (s: CompetitionSettings) => void) {
   return supabase.channel('competition-settings')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'competition_settings', filter: 'id=eq.1' },
-      (payload) => onUpdate(payload.new as CompetitionSettings))
-    .subscribe();
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'competition_settings' },
+      (payload: any) => onUpdate(payload.new as CompetitionSettings))
+    .subscribe((status: string) => console.log('subscribeToSettings status:', status));
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
