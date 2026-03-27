@@ -44,8 +44,8 @@ app.post('/auth/setup', async (req, res) => {
     if (existing && existing.length > 0) {
       return res.json({ message: 'Users already configured' });
     }
-    const adminHash = await bcrypt.hash('admin123', 10);
-    const judgeHash = await bcrypt.hash('judge123', 10);
+    const adminHash = await bcrypt.hash('Admin@UniBoticsSiraj', 10);
+    const judgeHash = await bcrypt.hash('Judge@Password', 10);
     await supabase.from('users').insert([
       { username: 'admin', password_hash: adminHash, role: 'admin' },
       { username: 'judge', password_hash: judgeHash, role: 'judge' }
@@ -53,8 +53,8 @@ app.post('/auth/setup', async (req, res) => {
     res.json({
       message: 'Default users created',
       credentials: [
-        { username: 'admin', password: 'admin123', role: 'admin' },
-        { username: 'judge', password: 'judge123', role: 'judge' }
+        { username: 'admin', password: 'Admin@UniBoticsSiraj', role: 'admin' },
+        { username: 'judge', password: 'Judge@Password', role: 'judge' }
       ]
     });
   } catch (error) {
