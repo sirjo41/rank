@@ -337,17 +337,29 @@ export default function JudgeDashboard() {
     initAudio(); playStartSound();
     warningPlayed.current = false; endPlayed.current = false;
     setMatchStarted(true); setMatchEnded(false);
+    setIsRunning(true);
+    setSettings((prev: any) => ({ ...prev, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null }));
     try {
       if (activeMatch) await api.updateMatchStatus(activeMatch.id, 'playing');
-    } catch (e) { console.error(e); }
+    } catch (e: any) { alert(e.message); setIsRunning(false); }
   };
 
-  const handlePause = () => setIsRunning(prev => !prev);
+  const handlePause = async () => {
+    setIsRunning(false);
+    setSettings((prev: any) => ({ ...prev, timer_running: false, timer_paused_remaining: timeLeft }));
+    try {
+      if (activeMatch) await api.updateSettings({ timer_running: false, timer_paused_remaining: timeLeft });
+    } catch (e: any) { alert(e.message); }
+  };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setIsRunning(false); setMatchStarted(false); setMatchEnded(false);
     setTimeLeft(MATCH_DURATION);
     warningPlayed.current = false; endPlayed.current = false;
+    setSettings((prev: any) => ({ ...prev, timer_running: false, timer_started_at: null, timer_paused_remaining: null }));
+    try {
+      if (activeMatch) await api.updateMatchStatus(activeMatch.id, 'scheduled');
+    } catch (e: any) { alert(e.message); }
   };
 
   const handleSubmit = async () => {
