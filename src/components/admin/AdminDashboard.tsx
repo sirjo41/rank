@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { computeMatchTotals, EMPTY_BREAKDOWN } from '../../utils/scoring';
+import { playNotificationSound, initAudio } from '../../utils/sounds';
 import * as api from '../../utils/api';
 import {
   Shield, Plus, Trash2, Calendar, Users, Eye, EyeOff, CheckCircle, XCircle,
@@ -22,6 +23,8 @@ export default function AdminDashboard() {
   const [matches, setMatches] = useState<api.Match[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [judges, setJudges]   = useState<Judge[]>([]);
+
+  const pendingCountRef = useRef(0);
 
   // Team form
   const [teamName, setTeamName]     = useState('');
@@ -59,6 +62,16 @@ export default function AdminDashboard() {
       const [t, m, s, j] = await Promise.all([
         api.fetchTeams(), api.fetchMatches(), api.fetchSettings(), api.fetchJudges()
       ]);
+      
+      const newPending = m.filter((match: api.Match) => match.status === 'judge_submitted').length;
+      if (newPending > pendingCountRef.current) {
+        try { initAudio(); playNotificationSound(); } catch (e) { /* ignore auto-play policies */ }
+        // We'll show the message via a local timeout since showMsg isn't scoped correctly yet
+        setError(''); setSuccess('🔔 New Score Approval Request received!');
+        setTimeout(() => setSuccess(''), 4000);
+      }
+      pendingCountRef.current = newPending;
+
       setTeams(t); setMatches(m); setSettings(s); setJudges(j);
     } catch (e) { console.error(e); }
   }, []);

@@ -106,6 +106,27 @@ export function playClickSound() {
   playTone(1000, 0.05, 'sine', 0.2);
 }
 
+/** Pleasant chime for notifications (e.g. Judge submissions) */
+export function playNotificationSound() {
+  const ctx = getAudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.8);
+}
+
 /** Enable audio context on user interaction (needed for browsers) */
 export function initAudio() {
   getAudioContext();
