@@ -12,6 +12,8 @@ export interface Match {
   status: 'scheduled' | 'playing' | 'judge_submitted' | 'completed';
   red_team1_id: string | null; red_team2_id: string | null;
   blue_team1_id: string | null; blue_team2_id: string | null;
+  judge_red_ready: boolean;
+  judge_blue_ready: boolean;
   score_breakdown_red: Partial<ScoreBreakdown>;
   score_breakdown_blue: Partial<ScoreBreakdown>;
   fouls_minor_red: number; fouls_major_red: number;
@@ -28,7 +30,7 @@ export interface CompetitionSettings {
 }
 
 export interface StoredUser {
-  id: string; username: string; role: 'admin' | 'judge';
+  id: string; username: string; role: 'admin' | 'judge' | 'head_referee';
   judge_type: 'red' | 'blue' | null;
 }
 
@@ -116,6 +118,8 @@ function normalizeMatch(m: any): Match {
     score_breakdown_blue: m.score_breakdown_blue ?? {},
     fouls_minor_red: m.fouls_minor_red ?? 0, fouls_major_red: m.fouls_major_red ?? 0,
     fouls_minor_blue: m.fouls_minor_blue ?? 0, fouls_major_blue: m.fouls_major_blue ?? 0,
+    judge_red_ready: m.judge_red_ready ?? false,
+    judge_blue_ready: m.judge_blue_ready ?? false,
   };
 }
 
@@ -188,29 +192,66 @@ export async function submitScore(matchId: string, redBreakdown: Partial<ScoreBr
   if (error) throw new Error(error.message);
 }
 
-// Admin score override before approval
+export async function toggleJudgeReady(matchId: string, alliance: 'red' | 'blue', ready: boolean): Promise<void> {
+  const field = alliance === 'red' ? 'judge_red_ready' : 'judge_blue_ready';
+  const { error } = await supabase.from('matches').update({ [field]: ready }).eq('id', matchId);
+  if (error) throw new Error(error.message);
+}
+
 export async function overrideMatchScore(matchId: string, updates: Partial<Match>): Promise<void> {
   const { error } = await supabase.from('matches').update(updates).eq('id', matchId);
   if (error) throw new Error(error.message);
 }
 
+// Admin status update (start match / complete match)
 export async function updateMatchStatus(matchId: string, status: string): Promise<void> {
+
   if (status === 'playing') {
-    const { error: err1 } = await supabase.from('competition_settings').upsert({ id: 1, active_match_id: matchId, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null, updated_at: new Date().toISOString() });
-    if (err1) {
-      console.error('Failed to update settings:', err1);
-      throw new Error('Failed to start timer: ' + err1.message);
-    }
+    const { error: err1 } = await supabase.from('competition_settings').upsert({ 
+      id: 1, 
+      active_match_id: matchId, 
+      timer_running: true, 
+      timer_started_at: new Date().toISOString(), 
+      timer_paused_remaining: null, 
+      updated_at: new Date().toISOString() 
+    });
+    if (err1) throw new Error('Failed to start timer: ' + err1.message);
   }
   if (status === 'completed') {
-    const { error: err2 } = await supabase.from('competition_settings').upsert({ id: 1, timer_running: false, updated_at: new Date().toISOString() });
-    if (err2) {
-      console.error('Failed to update settings:', err2);
-      throw new Error('Failed to stop timer: ' + err2.message);
-    }
+    const { error: err2 } = await supabase.from('competition_settings').upsert({ 
+      id: 1, 
+      timer_running: false, 
+      timer_started_at: null,
+      timer_paused_remaining: 0,
+      updated_at: new Date().toISOString() 
+    });
+    if (err2) throw new Error('Failed to stop timer: ' + err2.message);
   }
   const { error: err3 } = await supabase.from('matches').update({ status }).eq('id', matchId);
   if (err3) throw new Error(err3.message);
+}
+
+export async function setTimer(running: boolean, remaining: number | null): Promise<void> {
+  const now = new Date().toISOString();
+  const updates: any = { 
+    id: 1, 
+    timer_running: running, 
+    updated_at: now 
+  };
+  
+  if (running) {
+    // If we are starting/resuming, we set the started_at based on remaining time
+    // MATCH_DURATION - elapsed = remaining  =>  elapsed = MATCH_DURATION - remaining
+    const elapsedMs = (150 - (remaining ?? 150)) * 1000;
+    updates.timer_started_at = new Date(Date.now() - elapsedMs).toISOString();
+    updates.timer_paused_remaining = null;
+  } else {
+    updates.timer_started_at = null;
+    updates.timer_paused_remaining = remaining;
+  }
+
+  const { error } = await supabase.from('competition_settings').upsert(updates);
+  if (error) throw new Error(error.message);
 }
 
 // ─── Settings ─────────────────────────────────────────────────

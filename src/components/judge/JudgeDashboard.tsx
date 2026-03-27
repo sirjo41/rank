@@ -230,6 +230,7 @@ export default function JudgeDashboard() {
   const [foulsMinorBlue, setFoulsMinorBlue] = useState(0);
   const [foulsMajorBlue, setFoulsMajorBlue] = useState(0);
 
+  const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -256,7 +257,8 @@ export default function JudgeDashboard() {
         setFoulsMinorBlue((prev: any) => prev === 0 ? (match.fouls_minor_blue || 0) : prev);
         setFoulsMajorBlue((prev: any) => prev === 0 ? (match.fouls_major_blue || 0) : prev);
         
-        // Sync timer from server settings
+        setIsReady(canScoreRed ? match.judge_red_ready : match.judge_blue_ready);
+
         const tl = getTimerFromSettings(s);
         setTimeLeft(tl);
         setIsRunning(s?.timer_running || false);
@@ -266,7 +268,7 @@ export default function JudgeDashboard() {
         setActiveMatch(null);
       }
     } catch (e) { console.error(e); }
-  }, []);
+  }, [canScoreRed, canScoreBlue]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -297,14 +299,25 @@ export default function JudgeDashboard() {
     if (!isRunning || timeLeft <= 0) return;
     const t = setInterval(() => {
       setTimeLeft(prev => {
-        const next = prev - 1;
+        const next = Math.max(0, prev - 1);
         if (next === WARNING_TIME && !warningPlayed.current) { warningPlayed.current = true; playWarningSound(); }
         if (next <= 0 && !endPlayed.current) { endPlayed.current = true; playEndSound(); setIsRunning(false); setMatchEnded(true); }
-        return Math.max(0, next);
+        return next;
       });
     }, 1000);
     return () => clearInterval(t);
   }, [isRunning, timeLeft]);
+
+  useEffect(() => {
+    if (!activeMatch) return;
+    const sub = api.subscribeToMatch(activeMatch.id, m => {
+      if (m.id === activeMatch.id) {
+        setActiveMatch(m);
+        setIsReady(canScoreRed ? m.judge_red_ready : m.judge_blue_ready);
+      }
+    });
+    return () => sub.unsubscribe();
+  }, [activeMatch?.id, canScoreRed]);
 
   const isAuto = isAutoPeriod(timeLeft);
 
@@ -341,46 +354,16 @@ export default function JudgeDashboard() {
     triggerPush({ ...EMPTY_BREAKDOWN, ...redBreakdown }, { ...EMPTY_BREAKDOWN, ...blueBreakdown }, fmr, fmjr, fmb, fmjb);
   };
 
-  const handleStart = async () => {
-    initAudio(); playStartSound();
-    warningPlayed.current = false; endPlayed.current = false;
-    setMatchStarted(true); setMatchEnded(false);
-    setIsRunning(true);
-    setSettings((prev: any) => ({ ...prev, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null }));
-    try {
-      if (activeMatch) await api.updateMatchStatus(activeMatch.id, 'playing');
-    } catch (e: any) { alert(e.message); setIsRunning(false); }
-  };
-
-  const handlePause = async () => {
-    setIsRunning(false);
-    setSettings((prev: any) => ({ ...prev, timer_running: false, timer_paused_remaining: timeLeft }));
-    try {
-      if (activeMatch) await api.updateSettings({ timer_running: false, timer_paused_remaining: timeLeft });
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleReset = async () => {
-    setIsRunning(false); setMatchStarted(false); setMatchEnded(false);
-    setTimeLeft(MATCH_DURATION);
-    warningPlayed.current = false; endPlayed.current = false;
-    setSettings((prev: any) => ({ ...prev, timer_running: false, timer_started_at: null, timer_paused_remaining: null }));
-    try {
-      if (activeMatch) await api.updateMatchStatus(activeMatch.id, 'scheduled');
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleSubmit = async () => {
+  const toggleReady = async () => {
     if (!activeMatch) return;
-    setLoading(true); setError('');
+    const next = !isReady;
+    setIsReady(next);
     try {
-      await api.submitScore(activeMatch.id, redBreakdown, blueBreakdown, foulsMinorRed, foulsMajorRed, foulsMinorBlue, foulsMajorBlue);
-      setSuccess('Scores submitted to Admin!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message);
-      setTimeout(() => setError(''), 3000);
-    } finally { setLoading(false); }
+      await api.toggleJudgeReady(activeMatch.id, canScoreRed ? 'red' : 'blue', next);
+    } catch (e) {
+      setIsReady(!next);
+      alert('Failed to update status');
+    }
   };
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -447,21 +430,20 @@ export default function JudgeDashboard() {
               style={{ background: isAuto ? '#eab30820' : '#6366f120', color: isAuto ? '#eab308' : '#818cf8', border: `1px solid ${isAuto ? '#eab30840' : '#6366f140'}` }}>
               {isAuto ? '⚡ AUTO' : '🕹 TELEOP'}
             </div>
-            <div className="flex justify-center gap-3">
-              {!matchStarted ? (
-                <button onClick={handleStart} className="btn-success py-3 px-8 text-base font-bold flex items-center gap-2">
-                  <Play className="w-5 h-5" /> START
-                </button>
-              ) : (
-                <>
-                  <button onClick={handlePause} className={`${isRunning ? 'btn-outline' : 'btn-primary'} py-3 px-5 flex items-center gap-2`}>
-                    {isRunning ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Resume</>}
-                  </button>
-                  <button onClick={handleReset} className="btn-outline py-3 px-5 flex items-center gap-2">
-                    <RotateCcw className="w-4 h-4" /> Reset
-                  </button>
-                </>
-              )}
+            <div className="flex justify-center flex-col items-center gap-4">
+              <button 
+                onClick={toggleReady}
+                className={`w-full max-w-sm py-5 rounded-2xl text-2xl font-black transition-all shadow-xl shadow-slate-900/40 border-b-4 active:border-b-0 active:translate-y-1 ${
+                  isReady 
+                  ? 'bg-green-600 border-green-800 text-white shadow-green-900/20' 
+                  : 'bg-slate-700 border-slate-900 text-slate-400'
+                }`}
+              >
+                {isReady ? 'READY!' : 'MARK READY'}
+              </button>
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">
+                Match will start when both judges are ready
+              </p>
             </div>
             {matchEnded && <div className="mt-3 text-yellow-400 font-bold" style={{ fontFamily: "'Orbitron', sans-serif" }}>⏱ MATCH END</div>}
           </div>
@@ -484,12 +466,7 @@ export default function JudgeDashboard() {
             )}
           </div>
 
-          {/* Submit */}
-          <button onClick={handleSubmit} disabled={loading}
-            className="btn-primary w-full py-5 text-lg font-bold flex items-center justify-center gap-3">
-            <Send className="w-5 h-5" />
-            {loading ? 'Submitting...' : 'Submit Scores to Admin'}
-          </button>
+          {/* Panels are now auto-pushed/saved constantly */}
         </div>
       )}
     </div>

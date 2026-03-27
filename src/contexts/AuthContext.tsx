@@ -8,6 +8,7 @@ interface AuthContextType {
   logout: () => void;
   isAdmin: boolean;
   isJudge: boolean;
+  isReferee: boolean;
   judgeType: 'red' | 'blue' | null;
   canScoreRed: boolean;
   canScoreBlue: boolean;
@@ -32,16 +33,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => { apiLogout(); setUser(null); };
 
-  const isAdmin  = user?.role === 'admin';
-  const isJudge  = user?.role === 'judge';
+  const isAdmin   = user?.role === 'admin';
+  const isJudge   = user?.role === 'judge';
+  const isReferee = user?.role === 'head_referee';
   const judgeType = user?.judge_type ?? null;
 
-  // Admin can score both; red judge can only score red; blue judge only blue
-  const canScoreRed  = isAdmin || judgeType === 'red';
-  const canScoreBlue = isAdmin || judgeType === 'blue';
+  // Admin + Head Referee can score/override both; standard judges only their color
+  const canScoreRed  = isAdmin || isReferee || judgeType === 'red';
+  const canScoreBlue = isAdmin || isReferee || judgeType === 'blue';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isJudge, judgeType, canScoreRed, canScoreBlue }}>
+    <AuthContext.Provider value={{ 
+      user, loading, login, logout, isAdmin, isJudge, isReferee, judgeType, canScoreRed, canScoreBlue 
+    }}>
       {children}
     </AuthContext.Provider>
   );

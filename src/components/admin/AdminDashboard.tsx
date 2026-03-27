@@ -40,6 +40,11 @@ export default function AdminDashboard() {
   const [judgeType, setJudgeType]         = useState<'red' | 'blue'>('red');
 
   // Score override state
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [success, setSuccess]   = useState('');
+
+  // Approvals override state
   const [overrideMatchId, setOverrideMatchId] = useState<string | null>(null);
   const [overrideRed, setOverrideRed]   = useState<any>({});
   const [overrideBlue, setOverrideBlue] = useState<any>({});
@@ -48,9 +53,8 @@ export default function AdminDashboard() {
   const [overrideFoulsMinorBlue, setOverrideFoulsMinorBlue] = useState(0);
   const [overrideFoulsMajorBlue, setOverrideFoulsMajorBlue] = useState(0);
 
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const [success, setSuccess]   = useState('');
+  const [editMatchId, setEditMatchId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Partial<api.Match> | null>(null);
 
   useEffect(() => {
     if (!user) { navigate('/login?redirect=admin'); return; }
@@ -147,6 +151,43 @@ export default function AdminDashboard() {
       showMsg('Scores overridden!'); setOverrideMatchId(null); await refresh();
     } catch (err: any) { showMsg(err.message, true); }
     finally { setLoading(false); }
+  };
+
+  const startEditMatch = (match: api.Match) => {
+    setEditMatchId(match.id);
+    setEditData({
+      score_breakdown_red: { ...match.score_breakdown_red },
+      score_breakdown_blue: { ...match.score_breakdown_blue },
+      fouls_minor_red: match.fouls_minor_red,
+      fouls_major_red: match.fouls_major_red,
+      fouls_minor_blue: match.fouls_minor_blue,
+      fouls_major_blue: match.fouls_major_blue,
+    });
+  };
+
+  const handleEditChange = (alliance: 'red' | 'blue', key: string, val: any) => {
+    if (!editData) return;
+    const field = alliance === 'red' ? 'score_breakdown_red' : 'score_breakdown_blue';
+    setEditData({
+      ...editData,
+      [field]: { ...(editData[field] as any), [key]: val }
+    });
+  };
+
+  const handleEditFoul = (field: string, val: number) => {
+    if (!editData) return;
+    setEditData({ ...editData, [field]: val });
+  };
+
+  const saveEditMatch = async () => {
+    if (!editMatchId || !editData) return;
+    try {
+      await api.overrideMatchScore(editMatchId, editData);
+      setEditMatchId(null);
+      setEditData(null);
+      await refresh();
+      showMsg('Match updated!');
+    } catch (err: any) { showMsg(err.message, true); }
   };
 
   // ─── Audience Control ─────────────────────────────────────────
@@ -349,9 +390,14 @@ export default function AdminDashboard() {
                           <span className="badge badge-gray text-xs">{match.match_type}</span>
                           {getStatusBadge(match.status)}
                         </div>
-                        <button onClick={() => handleDeleteMatch(match.id)} className="text-gray-500 hover:text-red-400 transition-colors p-2">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={() => startEditMatch(match)} className="text-gray-500 hover:text-blue-400 transition-colors p-2">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteMatch(match.id)} className="text-gray-500 hover:text-red-400 transition-colors p-2">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-2 flex items-center gap-3 text-sm">
                         <span className="text-red-300">{match.red_team1?.name}{match.match_type === '2v2' && ` & ${match.red_team2?.name}`}</span>
@@ -594,6 +640,145 @@ export default function AdminDashboard() {
         )}
 
       </div>
+
+
+      {/* Edit Match Modal */}
+      {editMatchId && editData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6 sm:p-12 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl max-h-full flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+              <h3 className="text-2xl font-black tracking-tight" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                EDIT MATCH #{matches.find(m => m.id === editMatchId)?.match_number}
+              </h3>
+              <button 
+                onClick={() => { setEditMatchId(null); setEditData(null); }}
+                className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-8 h-8" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-900">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                {/* Red Alliance Edit */}
+                <div className="space-y-6">
+                  <h4 className="text-red-500 font-bold uppercase tracking-widest text-lg border-b border-red-900/30 pb-2">Red Alliance</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.entries(EMPTY_BREAKDOWN).map(([key, val]) => {
+                      if (typeof val === 'boolean') {
+                        return (
+                          <div key={key} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg">
+                            <span className="text-sm font-medium text-slate-300 capitalize">{key.replace(/_/g, ' ')}</span>
+                            <input 
+                              type="checkbox" 
+                              checked={!!(editData.score_breakdown_red as any)?.[key]} 
+                              onChange={(e) => handleEditChange('red', key, e.target.checked)}
+                              className="w-5 h-5 accent-red-500"
+                            />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={key} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-slate-300 capitalize">{key.replace(/_/g, ' ')}</span>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleEditChange('red', key, Math.max(0, ((editData.score_breakdown_red as any)?.[key] || 0) - 1))} className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded flex items-center justify-center font-bold">-</button>
+                            <span className="w-8 text-center font-bold text-white">{(editData.score_breakdown_red as any)?.[key] || 0}</span>
+                            <button onClick={() => handleEditChange('red', key, ((editData.score_breakdown_red as any)?.[key] || 0) + 1)} className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded flex items-center justify-center font-bold">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="mt-4 p-4 bg-red-950/20 border border-red-900/30 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-red-400 uppercase">Minor Fouls</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditFoul('fouls_minor_red', Math.max(0, (editData.fouls_minor_red || 0) - 1))} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">-</button>
+                          <span className="w-8 text-center font-bold text-white">{editData.fouls_minor_red || 0}</span>
+                          <button onClick={() => handleEditFoul('fouls_minor_red', (editData.fouls_minor_red || 0) + 1)} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">+</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-red-500 uppercase">Major Fouls</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditFoul('fouls_major_red', Math.max(0, (editData.fouls_major_red || 0) - 1))} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">-</button>
+                          <span className="w-8 text-center font-bold text-white">{editData.fouls_major_red || 0}</span>
+                          <button onClick={() => handleEditFoul('fouls_major_red', (editData.fouls_major_red || 0) + 1)} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">+</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Blue Alliance Edit */}
+                <div className="space-y-6">
+                  <h4 className="text-blue-500 font-bold uppercase tracking-widest text-lg border-b border-blue-900/30 pb-2">Blue Alliance</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.entries(EMPTY_BREAKDOWN).map(([key, val]) => {
+                      if (typeof val === 'boolean') {
+                        return (
+                          <div key={key} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg">
+                            <span className="text-sm font-medium text-slate-300 capitalize">{key.replace(/_/g, ' ')}</span>
+                            <input 
+                              type="checkbox" 
+                              checked={!!(editData.score_breakdown_blue as any)?.[key]} 
+                              onChange={(e) => handleEditChange('blue', key, e.target.checked)}
+                              className="w-5 h-5 accent-blue-500"
+                            />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={key} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg">
+                          <span className="text-sm font-medium text-slate-300 capitalize">{key.replace(/_/g, ' ')}</span>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleEditChange('blue', key, Math.max(0, ((editData.score_breakdown_blue as any)?.[key] || 0) - 1))} className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded flex items-center justify-center font-bold">-</button>
+                            <span className="w-8 text-center font-bold text-white">{(editData.score_breakdown_blue as any)?.[key] || 0}</span>
+                            <button onClick={() => handleEditChange('blue', key, ((editData.score_breakdown_blue as any)?.[key] || 0) + 1)} className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded flex items-center justify-center font-bold">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="mt-4 p-4 bg-blue-950/20 border border-blue-900/30 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-blue-400 uppercase">Minor Fouls</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditFoul('fouls_minor_blue', Math.max(0, (editData.fouls_minor_blue || 0) - 1))} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">-</button>
+                          <span className="w-8 text-center font-bold text-white">{editData.fouls_minor_blue || 0}</span>
+                          <button onClick={() => handleEditFoul('fouls_minor_blue', (editData.fouls_minor_blue || 0) + 1)} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">+</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-blue-500 uppercase">Major Fouls</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditFoul('fouls_major_blue', Math.max(0, (editData.fouls_major_blue || 0) - 1))} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">-</button>
+                          <span className="w-8 text-center font-bold text-white">{editData.fouls_major_blue || 0}</span>
+                          <button onClick={() => handleEditFoul('fouls_major_blue', (editData.fouls_major_blue || 0) + 1)} className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center font-bold">+</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 border-t border-slate-800 bg-slate-900/80 flex gap-4">
+              <button 
+                onClick={saveEditMatch}
+                className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-black text-lg transition-all shadow-xl shadow-indigo-950/40"
+              >
+                SAVE CHANGES
+              </button>
+              <button 
+                onClick={() => { setEditMatchId(null); setEditData(null); }}
+                className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-lg text-slate-300 transition-all"
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
