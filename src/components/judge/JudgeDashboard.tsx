@@ -248,6 +248,14 @@ export default function JudgeDashboard() {
       const match = s?.active_match_id ? allMatches.find((m: api.Match) => m.id === s.active_match_id) : null;
       if (match) {
         setActiveMatch(match);
+        // Sync initial breakdown if we just mounted or match changed
+        setRedBreakdown((prev: any) => Object.keys(prev).length === 0 ? (match.score_breakdown_red || {}) : prev);
+        setBlueBreakdown((prev: any) => Object.keys(prev).length === 0 ? (match.score_breakdown_blue || {}) : prev);
+        setFoulsMinorRed((prev: any) => prev === 0 ? (match.fouls_minor_red || 0) : prev);
+        setFoulsMajorRed((prev: any) => prev === 0 ? (match.fouls_major_red || 0) : prev);
+        setFoulsMinorBlue((prev: any) => prev === 0 ? (match.fouls_minor_blue || 0) : prev);
+        setFoulsMajorBlue((prev: any) => prev === 0 ? (match.fouls_major_blue || 0) : prev);
+        
         // Sync timer from server settings
         const tl = getTimerFromSettings(s);
         setTimeLeft(tl);
