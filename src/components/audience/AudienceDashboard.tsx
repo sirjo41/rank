@@ -75,33 +75,44 @@ export default function AudienceDashboard() {
 
   useEffect(() => { refresh(); }, []);
 
-  // Supabase Realtime: settings changes (timer, view)
+  // Supabase Realtime fallback to aggressive polling to ensure syncing
   useEffect(() => {
+    let lastRefresh = 0;
     const ch = api.subscribeToSettings(async (s) => {
+      lastRefresh = Date.now();
       const { data: allMatches } = await (async () => {
         try { return { data: await api.fetchMatches() }; } catch { return { data: [] }; }
       })();
       applySettings(s, allMatches);
     });
-    return () => { ch.unsubscribe(); };
-  }, [applySettings]);
+    
+    // Aggressive polling fallback in case Realtime WebSockets are blocked/failing
+    const pollInterval = setInterval(async () => {
+      if (Date.now() - lastRefresh > 1500) {
+        refresh(); // Force sync if no realtime updates heard recently
+      }
+    }, 1500);
 
-  // Supabase Realtime: match score changes (live scoring updates)
+    return () => { ch.unsubscribe(); clearInterval(pollInterval); };
+  }, [applySettings, refresh]);
+
+  // Poll matches and rankings aggressively
   useEffect(() => {
-    if (!activeMatch?.id) return;
-    const ch = api.subscribeToMatch(activeMatch.id, (updatedMatch) => {
+    const ch = api.subscribeToMatch(activeMatch?.id || '', (updatedMatch) => {
       setActiveMatch(updatedMatch);
     });
-    return () => { ch.unsubscribe(); };
-  }, [activeMatch?.id]);
-
-  // Poll rankings every 10s
-  useEffect(() => {
     const i = setInterval(async () => {
-      try { setRankings(await api.fetchRankings()); } catch {}
-    }, 10000);
-    return () => clearInterval(i);
-  }, []);
+      try { 
+        setRankings(await api.fetchRankings()); 
+        if (activeMatch?.id) {
+            const matches = await api.fetchMatches();
+            const liveMatch = matches.find(m => m.id === activeMatch.id);
+            if (liveMatch) setActiveMatch(liveMatch);
+        }
+      } catch {}
+    }, 2000);
+    return () => { ch.unsubscribe(); clearInterval(i); };
+  }, [activeMatch?.id]);
 
   // Local timer countdown (synced from server, runs locally between polls)
   useEffect(() => {

@@ -261,22 +261,28 @@ export default function JudgeDashboard() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
-  useEffect(() => {
-    const i = setInterval(refresh, 5000);
-    return () => clearInterval(i);
-  }, [refresh]);
 
   // Subscribe to live settings changes for timer sync
   useEffect(() => {
+    let lastRefresh = 0;
     const ch = api.subscribeToSettings((s) => {
+      lastRefresh = Date.now();
       setSettings(s);
       const tl = getTimerFromSettings(s);
       setTimeLeft(tl);
       setIsRunning(s.timer_running || false);
       if (tl <= 0) { setMatchEnded(true); setIsRunning(false); }
     });
-    return () => { ch.unsubscribe(); };
-  }, []);
+    
+    // Fallback aggressive polling just in case Realtime connection is heavily throttled or broken
+    const pollInterval = setInterval(() => {
+      if (Date.now() - lastRefresh > 1500) {
+        refresh();
+      }
+    }, 1500);
+    
+    return () => { ch.unsubscribe(); clearInterval(pollInterval); };
+  }, [refresh]);
 
   // Local timer tick
   useEffect(() => {
