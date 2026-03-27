@@ -1,32 +1,27 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getStoredUser, logout as apiLogout, login as apiLogin } from '../utils/api';
-
-interface User {
-  id: string;
-  username: string;
-  role: 'admin' | 'judge';
-}
+import { getStoredUser, logout as apiLogout, login as apiLogin, StoredUser } from '../utils/api';
 
 interface AuthContextType {
-  user: User | null;
+  user: StoredUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
   isJudge: boolean;
+  judgeType: 'red' | 'blue' | null;
+  canScoreRed: boolean;
+  canScoreBlue: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<StoredUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const stored = getStoredUser();
-    if (stored) {
-      setUser(stored);
-    }
+    if (stored) setUser(stored);
     setLoading(false);
   }, []);
 
@@ -35,29 +30,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   };
 
-  const logout = () => {
-    apiLogout();
-    setUser(null);
-  };
+  const logout = () => { apiLogout(); setUser(null); };
+
+  const isAdmin  = user?.role === 'admin';
+  const isJudge  = user?.role === 'judge';
+  const judgeType = user?.judge_type ?? null;
+
+  // Admin can score both; red judge can only score red; blue judge only blue
+  const canScoreRed  = isAdmin || judgeType === 'red';
+  const canScoreBlue = isAdmin || judgeType === 'blue';
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        logout,
-        isAdmin: user?.role === 'admin',
-        isJudge: user?.role === 'judge',
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isJudge, judgeType, canScoreRed, canScoreBlue }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 }
