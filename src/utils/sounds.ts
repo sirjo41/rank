@@ -131,3 +131,31 @@ export function playNotificationSound() {
 export function initAudio() {
   getAudioContext();
 }
+
+/** Sharp industrial buzzer sound for transitions */
+export function playBuzzerSound() {
+  const ctx = getAudioContext();
+  const duration = 0.8;
+  
+  // Create a complex "buzz" by layering multiple oscillators
+  const frequencies = [100, 150, 200];
+  
+  frequencies.forEach(freq => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime + duration - 0.1);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  });
+}

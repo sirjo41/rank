@@ -10,7 +10,7 @@ import {
   MATCH_DURATION,
   AUTO_DURATION 
 } from '../../utils/scoring';
-import { playNotificationSound, initAudio, playClickSound } from '../../utils/sounds';
+import { playNotificationSound, initAudio, playClickSound, playBuzzerSound } from '../../utils/sounds';
 import { 
   Gavel, 
   Play, 
@@ -64,6 +64,16 @@ export default function HeadRefereeDashboard() {
       setSettings(s);
       setTimeLeft(getTimerFromSettings(s));
       setIsRunning(s.timer_running || false);
+      
+      // Auto-sync phase
+      if (s.timer_phase === 'pickup') {
+        if (!isWaitingForDrivers) {
+          setIsWaitingForDrivers(true);
+          setWaitProgress(PICKUP_DURATION);
+        }
+      } else {
+        setIsWaitingForDrivers(false);
+      }
     });
     const subMatch = api.subscribeToMatch(settings?.active_match_id, m => {
       if (m.id === activeMatch?.id) setActiveMatch(m);
@@ -94,17 +104,17 @@ export default function HeadRefereeDashboard() {
 
   const handleAutoPause = async () => {
     try {
-      await api.setTimer(false, AUTO_PAUSE_TIME);
+      await api.setTimer(false, AUTO_PAUSE_TIME, 'pickup');
       setIsWaitingForDrivers(true);
       setWaitProgress(PICKUP_DURATION);
-      playNotificationSound();
+      playBuzzerSound();
     } catch (e) { alert('Pause failed'); }
   };
 
   const handleResumeTeleop = async () => {
     try {
-      await api.setTimer(true, AUTO_PAUSE_TIME);
-      playClickSound();
+      await api.setTimer(true, AUTO_PAUSE_TIME, 'teleop');
+      playBuzzerSound();
     } catch (e) { alert('Resume failed'); }
   };
 

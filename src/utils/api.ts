@@ -26,7 +26,9 @@ export interface CompetitionSettings {
   id: number; active_match_id: string | null;
   audience_view: 'standby' | 'match' | 'results' | 'rankings';
   timer_running: boolean; timer_started_at: string | null;
-  timer_paused_remaining: number | null; updated_at: string;
+  timer_paused_remaining: number | null; 
+  timer_phase: 'none' | 'autonomous' | 'pickup' | 'teleop';
+  updated_at: string;
 }
 
 export interface StoredUser {
@@ -213,6 +215,7 @@ export async function updateMatchStatus(matchId: string, status: string): Promis
       timer_running: true, 
       timer_started_at: new Date().toISOString(), 
       timer_paused_remaining: null, 
+      timer_phase: 'autonomous',
       updated_at: new Date().toISOString() 
     });
     if (err1) throw new Error('Failed to start timer: ' + err1.message);
@@ -223,6 +226,7 @@ export async function updateMatchStatus(matchId: string, status: string): Promis
       timer_running: false, 
       timer_started_at: null,
       timer_paused_remaining: 0,
+      timer_phase: 'none',
       updated_at: new Date().toISOString() 
     });
     if (err2) throw new Error('Failed to stop timer: ' + err2.message);
@@ -231,13 +235,15 @@ export async function updateMatchStatus(matchId: string, status: string): Promis
   if (err3) throw new Error(err3.message);
 }
 
-export async function setTimer(running: boolean, remaining: number | null): Promise<void> {
+export async function setTimer(running: boolean, remaining: number | null, phase?: 'none' | 'autonomous' | 'pickup' | 'teleop'): Promise<void> {
   const now = new Date().toISOString();
   const updates: any = { 
     id: 1, 
     timer_running: running, 
     updated_at: now 
   };
+  
+  if (phase) updates.timer_phase = phase; 
   
   if (running) {
     // If we are starting/resuming, we set the started_at based on remaining time

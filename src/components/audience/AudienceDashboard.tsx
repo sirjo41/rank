@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as api from '../../utils/api';
 import { computeMatchTotals, getTimerFromSettings, isAutoPeriod, MATCH_DURATION, POINTS, EMPTY_BREAKDOWN } from '../../utils/scoring';
-import { playStartSound, playWarningSound, playEndSound, initAudio } from '../../utils/sounds';
-import { Trophy, Timer as TimerIcon, Zap } from 'lucide-react';
+import { playStartSound, playWarningSound, playEndSound, initAudio, playBuzzerSound } from '../../utils/sounds';
+import { Trophy, Timer as TimerIcon, Zap, Gamepad2 } from 'lucide-react';
 
 const WARNING_TIME = 30;
 
@@ -27,6 +27,8 @@ export default function AudienceDashboard() {
   // Timer (derived from server settings)
   const [timeLeft, setTimeLeft] = useState(MATCH_DURATION);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerPhase, setTimerPhase] = useState<'none' | 'autonomous' | 'pickup' | 'teleop'>('none');
+  const [pickupTime, setPickupTime] = useState(8);
   const prevRunning = useRef(false);
   const warningPlayed = useRef(false);
   const endPlayed = useRef(false);
@@ -46,13 +48,20 @@ export default function AudienceDashboard() {
     const tl = getTimerFromSettings(s);
     setTimeLeft(Math.max(0, tl));
     setTimerRunning(nowRunning);
+    setTimerPhase(s.timer_phase || 'none');
 
     // Play start sound on transition to running
     if (!wasRunning && nowRunning && audioInit.current) {
       warningPlayed.current = false; endPlayed.current = false;
-      playStartSound();
+      if (s.timer_phase === 'autonomous') playStartSound();
+      if (s.timer_phase === 'teleop') playBuzzerSound();
     }
-    prevRunning.current = nowRunning;
+    
+    // Play buzzer when entering pickup phase
+    if (s.timer_phase === 'pickup' && timerPhase !== 'pickup' && audioInit.current) {
+      playBuzzerSound();
+      setPickupTime(8);
+    }
 
     // View transition
     setSettings(s);
@@ -130,7 +139,14 @@ export default function AudienceDashboard() {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const timerColor = timeLeft <= 10 ? '#ef4444' : timeLeft <= WARNING_TIME ? '#f59e0b' : '#ffffff';
-  const isAuto = isAutoPeriod(timeLeft);
+  const isAuto = timerPhase === 'autonomous' || (timerPhase === 'none' && isAutoPeriod(timeLeft));
+
+  // Pickup Countdown local timer
+  useEffect(() => {
+    if (timerPhase !== 'pickup' || pickupTime <= 0) return;
+    const t = setInterval(() => setPickupTime(p => Math.max(0, p - 1)), 1000);
+    return () => clearInterval(t);
+  }, [timerPhase, pickupTime]);
 
   const matchTotals = activeMatch ? computeMatchTotals(
     activeMatch.score_breakdown_red ?? {}, activeMatch.score_breakdown_blue ?? {},
@@ -180,6 +196,40 @@ export default function AudienceDashboard() {
             <div className="text-center mb-4">
               <span className="badge badge-gray text-xs tracking-widest">{activeMatch.match_type} • Match #{activeMatch.match_number}</span>
             </div>
+
+            {/* Transition Overlay */}
+            {timerPhase === 'pickup' && (
+              <div className="fixed inset-0 z-[100] bg-[#0f172a]/95 flex flex-col items-center justify-center p-10 animate-in fade-in zoom-in duration-500">
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-amber-500/10 rounded-full blur-[120px]" />
+                </div>
+                
+                <div className="relative flex flex-col items-center text-center space-y-8">
+                  <div className="bg-amber-500/20 p-8 rounded-full animate-pulse border border-amber-500/30">
+                    <Gamepad2 className="w-24 h-24 text-amber-500" />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h2 className="text-6xl md:text-8xl font-black text-amber-400 tracking-tighter italic uppercase" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                      DRIVERS PICK UP
+                    </h2>
+                    <h3 className="text-4xl md:text-5xl font-bold text-white tracking-widest uppercase opacity-80">
+                      YOUR CONTROLLERS
+                    </h3>
+                  </div>
+
+                  <div className="text-[12rem] font-black leading-none text-white transition-all transform scale-110 drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                    {pickupTime}
+                  </div>
+
+                  <div className="flex gap-2">
+                    {[...Array(8)].map((_, i) => (
+                      <div key={i} className={`h-2 w-12 rounded-full transition-all duration-500 ${i < pickupTime ? 'bg-amber-500' : 'bg-slate-800'}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Timer */}
             {(timerRunning || activeMatch.status === 'playing') && (
