@@ -196,10 +196,12 @@ export async function overrideMatchScore(matchId: string, updates: Partial<Match
 
 export async function updateMatchStatus(matchId: string, status: string): Promise<void> {
   if (status === 'playing') {
-    await supabase.from('competition_settings').update({ active_match_id: matchId, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null, updated_at: new Date().toISOString() }).eq('id', 1);
+    const { error } = await supabase.from('competition_settings').update({ active_match_id: matchId, timer_running: true, timer_started_at: new Date().toISOString(), timer_paused_remaining: null, updated_at: new Date().toISOString() }).eq('id', 1);
+    if (error) console.error('Failed to update timer:', error);
   }
   if (status === 'completed') {
-    await supabase.from('competition_settings').update({ timer_running: false, updated_at: new Date().toISOString() }).eq('id', 1);
+    const { error } = await supabase.from('competition_settings').update({ timer_running: false, updated_at: new Date().toISOString() }).eq('id', 1);
+    if (error) console.error('Failed to stop timer:', error);
   }
   const { error } = await supabase.from('matches').update({ status }).eq('id', matchId);
   if (error) throw new Error(error.message);
