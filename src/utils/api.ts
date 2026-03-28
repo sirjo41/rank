@@ -125,29 +125,196 @@ function normalizeMatch(m: any): Match {
   };
 }
 
+// ─── Balanced schedule generation ─────────────────────────────
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+/** Canonical key for two teams as partners (orderless). */
+function alliancePairKey(a: string, b: string): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function canonicalFullMatch1v1(red: string, blue: string): string {
+  return alliancePairKey(red, blue);
+}
+
+/** Same 4 teams + same pairing split (orderless across Red/Blue side). */
+function canonicalFullMatch2v2(r1: string, r2: string, b1: string, b2: string): string {
+  const rp = alliancePairKey(r1, r2);
+  const bp = alliancePairKey(b1, b2);
+  return rp < bp ? `${rp}||${bp}` : `${bp}||${rp}`;
+}
+
+function sortTeamsByBalance(ids: string[], teamCounts: Map<string, number>): string[] {
+  const buckets = new Map<number, string[]>();
+  for (const id of ids) {
+    const c = teamCounts.get(id) ?? 0;
+    if (!buckets.has(c)) buckets.set(c, []);
+    buckets.get(c)!.push(id);
+  }
+  const sortedCounts = [...buckets.keys()].sort((a, b) => a - b);
+  const result: string[] = [];
+  for (const c of sortedCounts) {
+    const arr = buckets.get(c)!;
+    shuffleInPlace(arr);
+    result.push(...arr);
+  }
+  return result;
+}
+
+function seedScheduleState(
+  rows: { match_type: string; red_team1_id: string | null; red_team2_id: string | null; blue_team1_id: string | null; blue_team2_id: string | null }[],
+  teamCounts: Map<string, number>,
+  seenAlliancePairs: Set<string>,
+  seenFullMatches: Set<string>,
+): void {
+  for (const m of rows) {
+    if (m.match_type === '1v1') {
+      const r = m.red_team1_id;
+      const b = m.blue_team1_id;
+      if (r && b) {
+        teamCounts.set(r, (teamCounts.get(r) ?? 0) + 1);
+        teamCounts.set(b, (teamCounts.get(b) ?? 0) + 1);
+        seenFullMatches.add(canonicalFullMatch1v1(r, b));
+      }
+    } else {
+      const r1 = m.red_team1_id;
+      const r2 = m.red_team2_id;
+      const b1 = m.blue_team1_id;
+      const b2 = m.blue_team2_id;
+      if (r1 && r2 && b1 && b2) {
+        for (const id of [r1, r2, b1, b2]) teamCounts.set(id, (teamCounts.get(id) ?? 0) + 1);
+        seenAlliancePairs.add(alliancePairKey(r1, r2));
+        seenAlliancePairs.add(alliancePairKey(b1, b2));
+        seenFullMatches.add(canonicalFullMatch2v2(r1, r2, b1, b2));
+      }
+    }
+  }
+}
+
+const PEN_ALLIANCE_REPEAT = 8_000;
+const PEN_FULL_MATCH_REPEAT = 50_000_000;
+
+function scoreBalanceAfter(r1: string, r2: string | null, b1: string, b2: string | null, teamCounts: Map<string, number>): number {
+  const ids = r2 && b2 ? [r1, r2, b1, b2] : [r1, b1];
+  const after = ids.map(id => (teamCounts.get(id) ?? 0) + 1);
+  const max = Math.max(...after);
+  const min = Math.min(...after);
+  return (max - min) * 100 + max * 20;
+}
+
 export async function generateSchedule(matchType: '1v1' | '2v2', matchCount: number) {
   const teamsNeeded = matchType === '1v1' ? 2 : 4;
   const { data: teams, error } = await supabase.from('teams').select('id');
   if (error) throw new Error(error.message);
   if (!teams || teams.length < teamsNeeded) throw new Error(`Need at least ${teamsNeeded} teams for ${matchType}`);
 
-  const { data: existing } = await supabase.from('matches').select('match_number').order('match_number', { ascending: false }).limit(1);
-  let nextNum = existing?.[0]?.match_number ? existing[0].match_number + 1 : 1;
+  const { data: existingRows } = await supabase
+    .from('matches')
+    .select('match_type, red_team1_id, red_team2_id, blue_team1_id, blue_team2_id');
 
-  const ids = teams.map((t: any) => t.id);
+  const { data: existingNum } = await supabase.from('matches').select('match_number').order('match_number', { ascending: false }).limit(1);
+  let nextNum = existingNum?.[0]?.match_number ? existingNum[0].match_number + 1 : 1;
+
+  const ids = teams.map((t: { id: string }) => t.id);
+  const teamCounts = new Map<string, number>();
+  for (const id of ids) teamCounts.set(id, 0);
+  const seenAlliancePairs = new Set<string>();
+  const seenFullMatches = new Set<string>();
+  seedScheduleState(existingRows || [], teamCounts, seenAlliancePairs, seenFullMatches);
+
   const matches: any[] = [];
-  const seen = new Set<string>();
-  let attempts = 0;
+  const maxAttemptsPerMatch = 1_200;
 
-  while (matches.length < matchCount && attempts < matchCount * 50) {
-    const s = [...ids].sort(() => Math.random() - 0.5);
-    const match = matchType === '1v1'
-      ? { match_number: nextNum + matches.length, match_type: matchType, red_team1_id: s[0], red_team2_id: null, blue_team1_id: s[1], blue_team2_id: null }
-      : { match_number: nextNum + matches.length, match_type: matchType, red_team1_id: s[0], red_team2_id: s[1], blue_team1_id: s[2], blue_team2_id: s[3] };
-    const key = matchType === '1v1' ? [match.red_team1_id, match.blue_team1_id].sort().join(':')
-      : `${[match.red_team1_id, match.red_team2_id].sort().join('-')}|${[match.blue_team1_id, match.blue_team2_id].sort().join('-')}`;
-    if (!seen.has(key)) { matches.push(match); seen.add(key); }
-    attempts++;
+  for (let mi = 0; mi < matchCount; mi++) {
+    let best: { score: number; row: any } | null = null;
+
+    for (let attempt = 0; attempt < maxAttemptsPerMatch; attempt++) {
+      const ordered = sortTeamsByBalance(ids, teamCounts);
+      const widen = Math.min(ordered.length, 4 + Math.floor(attempt / 100) + (attempt % 7));
+      const pool = ordered.slice(0, widen);
+      shuffleInPlace(pool);
+
+      if (matchType === '1v1') {
+        const t0 = pool[0];
+        const t1 = pool[1];
+        if (!t0 || !t1 || t0 === t1) continue;
+        const fullKey = canonicalFullMatch1v1(t0, t1);
+        const dupFull = seenFullMatches.has(fullKey);
+        let score = scoreBalanceAfter(t0, null, t1, null, teamCounts);
+        if (dupFull) score += PEN_FULL_MATCH_REPEAT;
+
+        const row = {
+          match_number: nextNum + mi,
+          match_type: '1v1' as const,
+          red_team1_id: t0,
+          red_team2_id: null,
+          blue_team1_id: t1,
+          blue_team2_id: null,
+        };
+        if (!best || score < best.score) best = { score, row };
+        continue;
+      }
+
+      const four = pool.slice(0, 4);
+      if (new Set(four).size !== 4) continue;
+      const [a, b, c, d] = four;
+      const splits: [string, string, string, string][] = [
+        [a, b, c, d],
+        [a, c, b, d],
+        [a, d, b, c],
+      ];
+
+      for (const [r1, r2, b1, b2] of splits) {
+        const fullKey = canonicalFullMatch2v2(r1, r2, b1, b2);
+        const rp = alliancePairKey(r1, r2);
+        const bp = alliancePairKey(b1, b2);
+        let score = scoreBalanceAfter(r1, r2, b1, b2, teamCounts);
+        if (seenFullMatches.has(fullKey)) score += PEN_FULL_MATCH_REPEAT;
+        if (seenAlliancePairs.has(rp)) score += PEN_ALLIANCE_REPEAT;
+        if (seenAlliancePairs.has(bp)) score += PEN_ALLIANCE_REPEAT;
+
+        const row = {
+          match_number: nextNum + mi,
+          match_type: '2v2' as const,
+          red_team1_id: r1,
+          red_team2_id: r2,
+          blue_team1_id: b1,
+          blue_team2_id: b2,
+        };
+        if (!best || score < best.score) best = { score, row };
+      }
+    }
+
+    if (!best) {
+      throw new Error(
+        'Could not generate a match. Try fewer matches, add more teams, or clear some existing matches.',
+      );
+    }
+
+    const row = best.row;
+    matches.push(row);
+
+    if (matchType === '1v1') {
+      const r = row.red_team1_id as string;
+      const b = row.blue_team1_id as string;
+      teamCounts.set(r, (teamCounts.get(r) ?? 0) + 1);
+      teamCounts.set(b, (teamCounts.get(b) ?? 0) + 1);
+      seenFullMatches.add(canonicalFullMatch1v1(r, b));
+    } else {
+      const r1 = row.red_team1_id as string;
+      const r2 = row.red_team2_id as string;
+      const b1 = row.blue_team1_id as string;
+      const b2 = row.blue_team2_id as string;
+      for (const id of [r1, r2, b1, b2]) teamCounts.set(id, (teamCounts.get(id) ?? 0) + 1);
+      seenAlliancePairs.add(alliancePairKey(r1, r2));
+      seenAlliancePairs.add(alliancePairKey(b1, b2));
+      seenFullMatches.add(canonicalFullMatch2v2(r1, r2, b1, b2));
+    }
   }
 
   const { data: inserted, error: ie } = await supabase.from('matches').insert(matches).select();
