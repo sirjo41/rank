@@ -180,14 +180,29 @@ export default function AudienceDashboard() {
 
         {/* ─── STANDBY ──────────────────────────────────── */}
         {currentView === 'standby' && (
-          <div className="flex flex-col items-center justify-center" style={{ minHeight: 'calc(100vh - 100px)' }}>
-            <div className="animate-float text-[120px] md:text-[160px] mb-6">🤖</div>
-            <h2 className="text-5xl md:text-7xl font-black tracking-[0.15em] gradient-text mb-4" style={{ fontFamily: "'Orbitron', sans-serif" }}>
-              UNIBOTICS
-            </h2>
-            <p className="text-xl text-gray-500 tracking-[0.5em] uppercase">Competition</p>
-            <div className="mt-10 flex items-center gap-2 text-gray-600">
-              <span className="status-dot live" /><span className="text-sm tracking-widest uppercase">Event in progress</span>
+          <div className="flex flex-col items-center justify-center px-4 md:px-10 pb-12" style={{ minHeight: 'calc(100vh - 100px)' }}>
+            <img
+              src="/standby/unibotics-banner.png"
+              alt="UniBotics Libya — National Robotics Championship for university students"
+              className="w-full max-w-5xl object-contain max-h-[min(34vh,320px)] mb-10 drop-shadow-2xl"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 md:gap-8 w-full max-w-6xl items-stretch">
+              {[
+                { src: '/standby/lptic.png', alt: 'LPTIC — القابضة للاتصالات' },
+                { src: '/standby/libyan-academy.png', alt: 'Libyan Academy for Telecommunications and Informatics' },
+                { src: '/standby/libyan-students-union.png', alt: 'General Union of Libyan Students' },
+              ].map((logo) => (
+                <div
+                  key={logo.src}
+                  className="flex items-center justify-center rounded-2xl bg-white/[0.97] p-5 md:p-7 shadow-lg shadow-black/40 border border-white/10"
+                >
+                  <img src={logo.src} alt={logo.alt} className="w-full max-h-24 md:max-h-28 object-contain" />
+                </div>
+              ))}
+            </div>
+            <div className="mt-12 flex items-center gap-2 text-gray-500">
+              <span className="status-dot live" />
+              <span className="text-sm tracking-widest uppercase">Event in progress</span>
             </div>
           </div>
         )}
