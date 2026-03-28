@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as api from '../../utils/api';
-import { computeMatchTotals, getTimerFromSettings, isAutoPeriod, MATCH_DURATION, POINTS, EMPTY_BREAKDOWN } from '../../utils/scoring';
+import { computeMatchTotals, getTimerFromSettings, isAutoPeriod, MATCH_DURATION, PICKUP_DURATION, POINTS, EMPTY_BREAKDOWN } from '../../utils/scoring';
 import { playStartSound, playWarningSound, playEndSound, initAudio, playBuzzerSound } from '../../utils/sounds';
 import { Trophy, Timer as TimerIcon, Zap, Gamepad2 } from 'lucide-react';
 
@@ -28,8 +28,9 @@ export default function AudienceDashboard() {
   const [timeLeft, setTimeLeft] = useState(MATCH_DURATION);
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerPhase, setTimerPhase] = useState<'none' | 'autonomous' | 'pickup' | 'teleop'>('none');
-  const [pickupTime, setPickupTime] = useState(8);
+  const [pickupTime, setPickupTime] = useState(PICKUP_DURATION);
   const prevRunning = useRef(false);
+  const prevPhaseRef = useRef<string>('none');
   const warningPlayed = useRef(false);
   const endPlayed = useRef(false);
   const audioInit = useRef(false);
@@ -57,11 +58,13 @@ export default function AudienceDashboard() {
       if (s.timer_phase === 'teleop') playBuzzerSound();
     }
     
-    // Play buzzer when entering pickup phase
-    if (s.timer_phase === 'pickup' && timerPhase !== 'pickup' && audioInit.current) {
+    // Play buzzer when entering pickup phase (compare to previous phase, not stale state)
+    const ph = s.timer_phase || 'none';
+    if (ph === 'pickup' && prevPhaseRef.current !== 'pickup' && audioInit.current) {
       playBuzzerSound();
-      setPickupTime(8);
+      setPickupTime(PICKUP_DURATION);
     }
+    prevPhaseRef.current = ph;
 
     // View transition
     setSettings(s);
@@ -139,7 +142,9 @@ export default function AudienceDashboard() {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const timerColor = timeLeft <= 10 ? '#ef4444' : timeLeft <= WARNING_TIME ? '#f59e0b' : '#ffffff';
-  const isAuto = timerPhase === 'autonomous' || (timerPhase === 'none' && isAutoPeriod(timeLeft));
+  const isAuto =
+    timerPhase !== 'pickup' &&
+    (timerPhase === 'autonomous' || (timerPhase === 'none' && isAutoPeriod(timeLeft)));
 
   // Pickup Countdown local timer
   useEffect(() => {
@@ -223,7 +228,7 @@ export default function AudienceDashboard() {
                   </div>
 
                   <div className="flex gap-2">
-                    {[...Array(8)].map((_, i) => (
+                    {[...Array(PICKUP_DURATION)].map((_, i) => (
                       <div key={i} className={`h-2 w-12 rounded-full transition-all duration-500 ${i < pickupTime ? 'bg-amber-500' : 'bg-slate-800'}`} />
                     ))}
                   </div>

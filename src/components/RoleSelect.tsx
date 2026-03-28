@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, Gavel, Monitor } from 'lucide-react';
+import { Shield, Gavel, Monitor, Scale } from 'lucide-react';
 
 export default function RoleSelect() {
   const navigate = useNavigate();
@@ -19,10 +19,19 @@ export default function RoleSelect() {
     {
       id: 'judge',
       title: 'Judge',
-      description: 'Start match timer, enter scores & fouls, and submit results for approval',
+      description: 'Enter scores & fouls for your alliance and mark ready for match start',
       icon: <Gavel className="w-12 h-12" />,
       color: 'from-amber-500 to-orange-600',
       glow: 'rgba(245, 158, 11, 0.3)',
+      requiresAuth: true,
+    },
+    {
+      id: 'referee',
+      title: 'Head Referee',
+      description: 'Start the match timer, run auto → pickup → teleop, and pause or restart the clock',
+      icon: <Scale className="w-12 h-12" />,
+      color: 'from-rose-600 to-red-800',
+      glow: 'rgba(244, 63, 94, 0.3)',
       requiresAuth: true,
     },
     {
@@ -67,7 +76,7 @@ export default function RoleSelect() {
       </div>
 
       {/* Role Cards */}
-      <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl w-full">
+      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 max-w-6xl w-full">
         {roles.map((role, index) => (
           <button
             key={role.id}

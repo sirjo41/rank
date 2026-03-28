@@ -61,7 +61,8 @@ export default function LoginPage() {
               UniBotics
             </h1>
             <p className="text-gray-400 text-sm">
-              Sign in as {redirect === 'judge' ? 'Judge' : 'Admin'}
+              Sign in as{' '}
+              {redirect === 'judge' ? 'Judge' : redirect === 'referee' ? 'Head Referee' : 'Admin'}
             </p>
           </div>
 

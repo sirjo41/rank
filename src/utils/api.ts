@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import bcrypt from 'bcryptjs';
-import { computeAllianceScore, computeMatchTotals, EMPTY_BREAKDOWN, ScoreBreakdown } from './scoring';
+import { computeAllianceScore, computeMatchTotals, EMPTY_BREAKDOWN, ScoreBreakdown, MATCH_DURATION } from './scoring';
 
 // ─── Types ────────────────────────────────────────────────────
 export interface Team {
@@ -464,7 +464,7 @@ export async function setTimer(running: boolean, remaining: number | null, phase
   if (running) {
     // If we are starting/resuming, we set the started_at based on remaining time
     // MATCH_DURATION - elapsed = remaining  =>  elapsed = MATCH_DURATION - remaining
-    const elapsedMs = (150 - (remaining ?? 150)) * 1000;
+    const elapsedMs = (MATCH_DURATION - (remaining ?? MATCH_DURATION)) * 1000;
     updates.timer_started_at = new Date(Date.now() - elapsedMs).toISOString();
     updates.timer_paused_remaining = null;
   } else {

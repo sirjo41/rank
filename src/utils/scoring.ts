@@ -8,7 +8,7 @@ export interface ScoreBreakdown {
   circles_low_auto: number;     // 10 × 2 = 20 pts each
   circles_high_auto: number;    // 10 × 2 × 2 = 40 pts each
 
-  // TeleOp period items (remaining 120s — base points)
+  // TeleOp period items (after auto; base points)
   boxes_low_teleop: number;       // 5 pts each
   boxes_high_teleop: number;      // 5 × 2 = 10 pts each
   triangles_low_teleop: number;   // 7 pts each
@@ -100,8 +100,15 @@ export function computeMatchTotals(
 }
 
 // ─── Timer helpers ─────────────────────────────────────────────
-export const MATCH_DURATION = 150; // total seconds
-export const AUTO_DURATION  = 30;  // first 30s = auto period
+// Match clock = 2:30 (150s) = 30s auto + 120s teleop only.
+// 8s pickup is extra wall time: timer is paused — it does NOT count down the 150s.
+// Wall time per match: 30 + 8 + 120 = 158s.
+export const AUTO_DURATION = 30;
+export const TELEOP_DURATION = 120; // remainder of the 150s countdown after auto
+export const PICKUP_DURATION = 8;
+export const MATCH_DURATION = AUTO_DURATION + TELEOP_DURATION; // 150
+/** Remaining seconds when auto ends (pickup overlay; clock stays here for 8s wall). */
+export const AUTO_END_REMAINING = MATCH_DURATION - AUTO_DURATION; // 120
 
 export function getTimerFromSettings(settings: any): number {
   if (!settings?.timer_running || !settings?.timer_started_at) {
@@ -112,5 +119,5 @@ export function getTimerFromSettings(settings: any): number {
 }
 
 export function isAutoPeriod(timeLeft: number): boolean {
-  return timeLeft > (MATCH_DURATION - AUTO_DURATION); // timeLeft > 120
+  return timeLeft > AUTO_END_REMAINING;
 }

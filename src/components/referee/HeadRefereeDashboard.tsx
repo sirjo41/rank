@@ -2,13 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import * as api from '../../utils/api';
-import { 
-  ScoreBreakdown, 
-  EMPTY_BREAKDOWN, 
-  computeMatchTotals, 
-  getTimerFromSettings, 
+import {
+  computeMatchTotals,
+  getTimerFromSettings,
   MATCH_DURATION,
-  AUTO_DURATION 
+  AUTO_END_REMAINING,
 } from '../../utils/scoring';
 import { playNotificationSound, initAudio, playClickSound, playBuzzerSound } from '../../utils/sounds';
 import { 
@@ -24,7 +22,6 @@ import {
   UserCheck
 } from 'lucide-react';
 
-const AUTO_PAUSE_TIME = 120; // 150 - 30 = 120
 const PICKUP_DURATION = 8;
 
 export default function HeadRefereeDashboard() {
@@ -35,10 +32,14 @@ export default function HeadRefereeDashboard() {
   const [settings, setSettings] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState(MATCH_DURATION);
   const [isRunning, setIsRunning] = useState(false);
-  
+
   // Transition state for 8s wait
   const [isWaitingForDrivers, setIsWaitingForDrivers] = useState(false);
   const [waitProgress, setWaitProgress] = useState(PICKUP_DURATION);
+
+  const settingsRef = useRef<any>(null);
+  settingsRef.current = settings;
+  const autoPauseTriggeredRef = useRef(false);
 
   useEffect(() => {
     if (!user) { navigate('/login?redirect=referee'); return; }
@@ -64,13 +65,10 @@ export default function HeadRefereeDashboard() {
       setSettings(s);
       setTimeLeft(getTimerFromSettings(s));
       setIsRunning(s.timer_running || false);
-      
-      // Auto-sync phase
+
       if (s.timer_phase === 'pickup') {
-        if (!isWaitingForDrivers) {
-          setIsWaitingForDrivers(true);
-          setWaitProgress(PICKUP_DURATION);
-        }
+        setIsWaitingForDrivers(true);
+        setWaitProgress(PICKUP_DURATION);
       } else {
         setIsWaitingForDrivers(false);
       }
@@ -82,29 +80,48 @@ export default function HeadRefereeDashboard() {
     return () => { sub.unsubscribe(); subMatch.unsubscribe(); clearInterval(interval); };
   }, [refresh, settings?.active_match_id, activeMatch?.id]);
 
+  // Main match clock (auto + teleop): ticks only while running; pickup freezes (timer_running false).
+  useEffect(() => {
+    if (!isRunning || isWaitingForDrivers) return;
+    const phase = settingsRef.current?.timer_phase;
+    if (phase !== 'autonomous' && phase !== 'teleop') return;
+
+    const t = setInterval(() => {
+      setTimeLeft(prev => {
+        const next = Math.max(0, prev - 1);
+        const ph = settingsRef.current?.timer_phase;
+        if (
+          ph === 'autonomous' &&
+          prev > AUTO_END_REMAINING &&
+          next <= AUTO_END_REMAINING &&
+          !autoPauseTriggeredRef.current
+        ) {
+          autoPauseTriggeredRef.current = true;
+          queueMicrotask(() => {
+            void handleAutoPause();
+          });
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [isRunning, isWaitingForDrivers, settings?.timer_phase]);
+
   // Handle local countdown for 8s wait
   useEffect(() => {
     if (!isWaitingForDrivers) return;
     if (waitProgress <= 0) {
       setIsWaitingForDrivers(false);
-      handleResumeTeleop();
+      void handleResumeTeleop();
       return;
     }
     const t = setInterval(() => setWaitProgress(p => p - 1), 1000);
     return () => clearInterval(t);
   }, [isWaitingForDrivers, waitProgress]);
 
-  // Monitor Timer for Auto End
-  useEffect(() => {
-    if (isRunning && timeLeft === AUTO_PAUSE_TIME && !isWaitingForDrivers) {
-      // Trigger 8s pause
-      handleAutoPause();
-    }
-  }, [isRunning, timeLeft]);
-
   const handleAutoPause = async () => {
     try {
-      await api.setTimer(false, AUTO_PAUSE_TIME, 'pickup');
+      await api.setTimer(false, AUTO_END_REMAINING, 'pickup');
       setIsWaitingForDrivers(true);
       setWaitProgress(PICKUP_DURATION);
       playBuzzerSound();
@@ -113,7 +130,7 @@ export default function HeadRefereeDashboard() {
 
   const handleResumeTeleop = async () => {
     try {
-      await api.setTimer(true, AUTO_PAUSE_TIME, 'teleop');
+      await api.setTimer(true, AUTO_END_REMAINING, 'teleop');
       playBuzzerSound();
     } catch (e) { alert('Resume failed'); }
   };
@@ -122,6 +139,7 @@ export default function HeadRefereeDashboard() {
     if (!activeMatch) return;
     initAudio();
     try {
+      autoPauseTriggeredRef.current = false;
       await api.updateMatchStatus(activeMatch.id, 'playing');
       setWaitProgress(PICKUP_DURATION);
       setIsWaitingForDrivers(false);
@@ -135,8 +153,11 @@ export default function HeadRefereeDashboard() {
   };
 
   const handleRestart = async () => {
-    if (!confirm('Restart match timer to 2:30?')) return;
+    const mm = Math.floor(MATCH_DURATION / 60);
+    const ss = MATCH_DURATION % 60;
+    if (!confirm(`Restart match timer to ${mm}:${ss.toString().padStart(2, '0')}?`)) return;
     try {
+      autoPauseTriggeredRef.current = false;
       await api.setTimer(false, MATCH_DURATION);
       await api.updateMatchStatus(activeMatch!.id, 'scheduled');
       await api.toggleJudgeReady(activeMatch!.id, 'red', false);

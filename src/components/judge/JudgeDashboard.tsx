@@ -56,7 +56,7 @@ function Counter({ value, onChange, min = 0, size = 'lg' }: { value: number; onC
 // ─── Alliance Scoring Panel ──────────────────────────────────
 function AlliancePanel({
   alliance, breakdown, onChange, foulsMinor, foulsMajor,
-  onFoulsMinorChange, onFoulsMajorChange, timeLeft, isAuto,
+  onFoulsMinorChange, onFoulsMajorChange, timeLeft, isAuto, scoringDisabled,
 }: {
   alliance: 'red' | 'blue';
   breakdown: Partial<ScoreBreakdown>;
@@ -65,6 +65,7 @@ function AlliancePanel({
   onFoulsMinorChange: (v: number) => void;
   onFoulsMajorChange: (v: number) => void;
   timeLeft: number; isAuto: boolean;
+  scoringDisabled: boolean;
 }) {
   const bd = { ...EMPTY_BREAKDOWN, ...breakdown };
   const isRed = alliance === 'red';
@@ -89,7 +90,7 @@ function AlliancePanel({
   const total = computeAllianceScore(bd);
 
   return (
-    <div className={`${glowClass} p-4 rounded-2xl space-y-4`}>
+    <div className={`${glowClass} p-4 rounded-2xl space-y-4 ${scoringDisabled ? 'opacity-40 pointer-events-none' : ''}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
@@ -319,7 +320,14 @@ export default function JudgeDashboard() {
     return () => sub.unsubscribe();
   }, [activeMatch?.id, canScoreRed]);
 
-  const isAuto = isAutoPeriod(timeLeft);
+  const timerPhase = settings?.timer_phase ?? 'none';
+  const isPickup = timerPhase === 'pickup';
+  const isMatchLive = activeMatch?.status === 'playing';
+  const isAuto =
+    isMatchLive &&
+    !isPickup &&
+    (timerPhase === 'autonomous' || (timerPhase === 'none' && isAutoPeriod(timeLeft)));
+  const scoringDisabled = !isMatchLive || isPickup;
 
   // Debounced real-time push on counter change
   const triggerPush = useCallback((newRed: Partial<ScoreBreakdown>, newBlue: Partial<ScoreBreakdown>, fmr: number, fmjr: number, fmb: number, fmjb: number) => {
@@ -427,8 +435,12 @@ export default function JudgeDashboard() {
               {formatTime(timeLeft)}
             </div>
             <div className="text-sm font-bold mb-5 tracking-wider px-4 py-1 rounded-full inline-block"
-              style={{ background: isAuto ? '#eab30820' : '#6366f120', color: isAuto ? '#eab308' : '#818cf8', border: `1px solid ${isAuto ? '#eab30840' : '#6366f140'}` }}>
-              {isAuto ? '⚡ AUTO' : '🕹 TELEOP'}
+              style={{
+                background: !isMatchLive ? '#64748b20' : isPickup ? '#f59e0b25' : isAuto ? '#eab30820' : '#6366f120',
+                color: !isMatchLive ? '#94a3b8' : isPickup ? '#f59e0b' : isAuto ? '#eab308' : '#818cf8',
+                border: `1px solid ${!isMatchLive ? '#64748b50' : isPickup ? '#f59e0b55' : isAuto ? '#eab30840' : '#6366f140'}`,
+              }}>
+              {!isMatchLive ? '⏳ WAITING' : isPickup ? '🎮 PICKUP' : isAuto ? '⚡ AUTO' : '🕹 TELEOP'}
             </div>
             <div className="flex justify-center flex-col items-center gap-4">
               <button 
@@ -455,14 +467,14 @@ export default function JudgeDashboard() {
                 foulsMinor={foulsMinorRed} foulsMajor={foulsMajorRed}
                 onFoulsMinorChange={v => handleFoulChange('minor_red', v)}
                 onFoulsMajorChange={v => handleFoulChange('major_red', v)}
-                timeLeft={timeLeft} isAuto={isAuto} />
+                timeLeft={timeLeft} isAuto={isAuto} scoringDisabled={scoringDisabled} />
             )}
             {canScoreBlue && (
               <AlliancePanel alliance="blue" breakdown={blueBreakdown} onChange={handleBlueChange}
                 foulsMinor={foulsMinorBlue} foulsMajor={foulsMajorBlue}
                 onFoulsMinorChange={v => handleFoulChange('minor_blue', v)}
                 onFoulsMajorChange={v => handleFoulChange('major_blue', v)}
-                timeLeft={timeLeft} isAuto={isAuto} />
+                timeLeft={timeLeft} isAuto={isAuto} scoringDisabled={scoringDisabled} />
             )}
           </div>
 
