@@ -170,11 +170,14 @@ export default function AudienceDashboard() {
 
       {/* Header */}
       <div className="relative z-10 text-center pt-5 pb-2">
-        <h1 className="text-3xl md:text-4xl font-black tracking-[0.3em] gradient-text" style={{ fontFamily: "'Orbitron', sans-serif" }}>
-          UNIBOTICS
-        </h1>
-      </div>
-
+  {currentView !== 'standby' && (
+    <img
+      src="/standby/unibotics-banner.png"
+      alt="UniBotics"
+      className="mx-auto max-h-[80px] md:max-h-[100px] object-contain"
+    />
+  )}
+</div>
       <div className={`relative z-10 transition-all duration-350 ${transitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
         style={{ minHeight: 'calc(100vh - 80px)' }}>
 
@@ -213,6 +216,8 @@ export default function AudienceDashboard() {
             <TimerIcon className="w-20 h-20 text-gray-700 mb-6" />
             <h2 className="text-3xl font-bold text-gray-500" style={{ fontFamily: "'Orbitron', sans-serif" }}>Waiting for next match...</h2>
           </div>
+          
+          
         )}
 
         {currentView === 'match' && activeMatch && (
@@ -497,6 +502,28 @@ export default function AudienceDashboard() {
           </div>
         )}
       </div>
+      {currentView !== 'standby' && (
+  <div className="mt-10 pb-6 px-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 md:gap-8 w-full max-w-6xl mx-auto items-stretch">
+      {[
+        { src: '/standby/lptic.png', alt: 'LPTIC — القابضة للاتصالات' },
+        { src: '/standby/libyan-academy.png', alt: 'Libyan Academy for Telecommunications and Informatics' },
+        { src: '/standby/libyan-students-union.png', alt: 'General Union of Libyan Students' },
+      ].map((logo) => (
+        <div
+          key={logo.src}
+          className="flex items-center justify-center rounded-2xl bg-white/[0.97] p-4 md:p-6 shadow-lg shadow-black/30 border border-white/10"
+        >
+          <img
+            src={logo.src}
+            alt={logo.alt}
+            className="w-full max-h-20 md:max-h-24 object-contain"
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+)}
     </div>
   );
 }
