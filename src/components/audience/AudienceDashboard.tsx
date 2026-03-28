@@ -51,15 +51,20 @@ export default function AudienceDashboard() {
     setTimerRunning(nowRunning);
     setTimerPhase(s.timer_phase || 'none');
 
-    // Play start sound on transition to running
-    if (!wasRunning && nowRunning && audioInit.current) {
-      warningPlayed.current = false; endPlayed.current = false;
-      if (s.timer_phase === 'autonomous') playStartSound();
-      if (s.timer_phase === 'teleop') playBuzzerSound();
-    }
-    
-    // Play buzzer when entering pickup phase (compare to previous phase, not stale state)
+    // Running edge: claim prevRunning immediately so overlapping applySettings() can't double-fire sounds
     const ph = s.timer_phase || 'none';
+    if (!wasRunning && nowRunning) {
+      prevRunning.current = true;
+      if (audioInit.current) {
+        warningPlayed.current = false; endPlayed.current = false;
+        if (ph === 'autonomous') playStartSound();
+        else if (ph === 'teleop') playBuzzerSound();
+      }
+    } else {
+      prevRunning.current = nowRunning;
+    }
+
+    // Buzzer when entering pickup (phase edge only)
     if (ph === 'pickup' && prevPhaseRef.current !== 'pickup' && audioInit.current) {
       playBuzzerSound();
       setPickupTime(PICKUP_DURATION);
