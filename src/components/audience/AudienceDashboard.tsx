@@ -264,7 +264,7 @@ export default function AudienceDashboard() {
             {/* Timer */}
             {(timerRunning || activeMatch.status === 'playing') && (
               <div className="text-center mb-6">
-                <div className="font-black leading-none" style={{ fontFamily: "'Orbitron', sans-serif', color: timerColor", fontSize: 'clamp(80px, 15vw, 160px)', color: timerColor }}>
+                <div className="font-black leading-none" style={{ fontFamily: "'Orbitron', sans-serif', color: timerColor", fontSize: 'clamp(80px, 15vw, 120px)', color: timerColor }}>
                   {fmt(timeLeft)}
                 </div>
                 <div className="text-sm font-bold tracking-widest mt-1 inline-block px-4 py-1 rounded-full"
