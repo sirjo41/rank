@@ -155,6 +155,55 @@ export async function generateSchedule(matchType: '1v1' | '2v2', matchCount: num
   return { matches: inserted, count: inserted.length };
 }
 
+/** Add a single match with chosen Red vs Blue alliances (no random draw). */
+export async function createManualMatch(params: {
+  matchType: '1v1' | '2v2';
+  red_team1_id: string;
+  red_team2_id: string | null;
+  blue_team1_id: string;
+  blue_team2_id: string | null;
+}): Promise<Match> {
+  const { matchType, red_team1_id, red_team2_id, blue_team1_id, blue_team2_id } = params;
+  if (matchType === '1v1') {
+    if (!red_team1_id || !blue_team1_id) throw new Error('Select both teams for Red and Blue');
+    if (red_team1_id === blue_team1_id) throw new Error('Red and Blue must be different teams');
+  } else {
+    const ids = [red_team1_id, red_team2_id, blue_team1_id, blue_team2_id].filter(Boolean) as string[];
+    if (ids.length !== 4) throw new Error('Select all four teams (two per alliance)');
+    if (new Set(ids).size !== 4) throw new Error('All four teams must be different');
+  }
+
+  const { data: existing } = await supabase
+    .from('matches')
+    .select('match_number')
+    .order('match_number', { ascending: false })
+    .limit(1);
+  const nextNum = existing?.[0]?.match_number ? existing[0].match_number + 1 : 1;
+
+  const row =
+    matchType === '1v1'
+      ? {
+          match_number: nextNum,
+          match_type: '1v1' as const,
+          red_team1_id,
+          red_team2_id: null,
+          blue_team1_id,
+          blue_team2_id: null,
+        }
+      : {
+          match_number: nextNum,
+          match_type: '2v2' as const,
+          red_team1_id,
+          red_team2_id: red_team2_id!,
+          blue_team1_id,
+          blue_team2_id: blue_team2_id!,
+        };
+
+  const { data, error } = await supabase.from('matches').insert([row]).select(MATCH_SELECT).single();
+  if (error) throw new Error(error.message);
+  return normalizeMatch(data);
+}
+
 export async function deleteAllMatches(): Promise<void> {
   await supabase.from('competition_settings').update({ active_match_id: null, timer_running: false, timer_started_at: null }).eq('id', 1);
   const { error } = await supabase.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');

@@ -6,7 +6,7 @@ import { playNotificationSound, initAudio } from '../../utils/sounds';
 import * as api from '../../utils/api';
 import {
   Shield, Plus, Trash2, Calendar, Users, Eye, EyeOff, CheckCircle, XCircle,
-  LogOut, Trophy, Monitor, BarChart3, AlertTriangle, RefreshCw, UserPlus, Gavel, Edit2, Save
+  LogOut, Trophy, Monitor, BarChart3, AlertTriangle, RefreshCw, UserPlus, Gavel, Edit2, Save, Swords
 } from 'lucide-react';
 
 interface Team { id: string; name: string; team_number: number | null; }
@@ -33,6 +33,11 @@ export default function AdminDashboard() {
   // Schedule form
   const [matchType, setMatchType]   = useState<'1v1' | '2v2'>('2v2');
   const [matchCount, setMatchCount] = useState(6);
+  const [manualType, setManualType] = useState<'1v1' | '2v2'>('2v2');
+  const [manualRed1, setManualRed1] = useState('');
+  const [manualRed2, setManualRed2] = useState('');
+  const [manualBlue1, setManualBlue1] = useState('');
+  const [manualBlue2, setManualBlue2] = useState('');
 
   // Judge creation form
   const [judgeUsername, setJudgeUsername] = useState('');
@@ -115,6 +120,23 @@ export default function AdminDashboard() {
     setLoading(true);
     try { const r = await api.generateSchedule(matchType, matchCount); showMsg(`Generated ${r.count} matches!`); await refresh(); }
     catch (err: any) { showMsg(err.message, true); }
+    finally { setLoading(false); }
+  };
+
+  const handleAddManualMatch = async () => {
+    setLoading(true);
+    try {
+      await api.createManualMatch({
+        matchType: manualType,
+        red_team1_id: manualRed1,
+        red_team2_id: manualType === '2v2' ? manualRed2 : null,
+        blue_team1_id: manualBlue1,
+        blue_team2_id: manualType === '2v2' ? manualBlue2 : null,
+      });
+      setManualRed1(''); setManualRed2(''); setManualBlue1(''); setManualBlue2('');
+      showMsg('Manual match added');
+      await refresh();
+    } catch (err: any) { showMsg(err.message, true); }
     finally { setLoading(false); }
   };
 
@@ -374,6 +396,84 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            <div className="glass-card p-6 mb-6">
+              <h2 className="text-lg font-bold mb-2 flex items-center gap-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                <Swords className="w-5 h-5 text-amber-400" /> Manual alliances
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">Choose which teams face each other — Red alliance vs Blue alliance.</p>
+              <div className="flex flex-wrap gap-4 items-end mb-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Match type</label>
+                  <div className="flex gap-2">
+                    {(['1v1', '2v2'] as const).map(type => (
+                      <button key={type} type="button" onClick={() => setManualType(type)}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manualType === type ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className={`grid gap-4 ${manualType === '2v2' ? 'md:grid-cols-2' : 'md:grid-cols-2 max-w-xl'}`}>
+                <div className="rounded-xl border border-red-900/40 bg-red-950/20 p-4 space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-widest text-red-400/90">Red alliance</div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">{manualType === '2v2' ? 'Team 1' : 'Team'}</label>
+                    <select value={manualRed1} onChange={e => setManualRed1(e.target.value)} className="input-field w-full">
+                      <option value="">Select team…</option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}{t.team_number != null ? ` (#${t.team_number})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {manualType === '2v2' && (
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Team 2</label>
+                      <select value={manualRed2} onChange={e => setManualRed2(e.target.value)} className="input-field w-full">
+                        <option value="">Select team…</option>
+                        {teams.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}{t.team_number != null ? ` (#${t.team_number})` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 p-4 space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-widest text-blue-400/90">Blue alliance</div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">{manualType === '2v2' ? 'Team 1' : 'Team'}</label>
+                    <select value={manualBlue1} onChange={e => setManualBlue1(e.target.value)} className="input-field w-full">
+                      <option value="">Select team…</option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}{t.team_number != null ? ` (#${t.team_number})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {manualType === '2v2' && (
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Team 2</label>
+                      <select value={manualBlue2} onChange={e => setManualBlue2(e.target.value)} className="input-field w-full">
+                        <option value="">Select team…</option>
+                        {teams.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}{t.team_number != null ? ` (#${t.team_number})` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4">
+                <button type="button" onClick={handleAddManualMatch} disabled={loading || teams.length < (manualType === '1v1' ? 2 : 4)}
+                  className="btn-primary flex items-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 border-0 shadow-lg shadow-amber-900/30">
+                  <Swords className="w-4 h-4" /> Add manual match
+                </button>
+                {teams.length < (manualType === '1v1' ? 2 : 4) && (
+                  <p className="text-xs text-amber-500/80 mt-2">Add more teams on the Teams tab first ({teams.length} / {manualType === '1v1' ? 2 : 4} needed).</p>
+                )}
+              </div>
+            </div>
+
             <div className="glass-card overflow-hidden">
               <div className="p-4 border-b border-gray-700/50">
                 <h3 className="font-semibold text-gray-300">Match List ({matches.length})</h3>
